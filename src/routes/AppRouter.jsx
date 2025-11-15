@@ -1,6 +1,8 @@
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import { Suspense } from 'react';
 import { Toaster } from 'sonner';
+import Home from '../pages/Home';
+import Lecture from '../pages/Lecture';
 
 const App = () => {
   const navigate = useNavigate();
@@ -40,7 +42,8 @@ export const AppRouter = () => {
       <Suspense fallback={<div>Loading...</div>}>
         <Routes>
           {/* Routes đơn giản */}
-          <Route path='/' element={<App />} />
+          <Route path='/' element={<Home />} />
+          <Route path='/lecture' element={<Lecture />} />
           <Route path='/some-path' element={<div>Some Path</div>} />
         </Routes>
       </Suspense>
