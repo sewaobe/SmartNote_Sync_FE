@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import pdfjsLib from "../pdf-worker";
 import PdfThumbnail from "../components/PdfThumbnail";
-import PdfContinuousViewer from "../components/PdfContinuousViewer";
 import InteractivePdfPage from "../components/InteractivePdfPage";
 import api from "../api/axiosClient";
 import { toast } from "sonner";
@@ -98,14 +97,6 @@ export default function Lecture() {
         loadPdfData();
     }, []);
 
-    const loadPdf = async (base64) => {
-        const raw = atob(base64.split(",")[1]);
-        const pdfDoc = await pdfjsLib.getDocument({ data: raw }).promise;
-
-        setPdf(pdfDoc);
-        setPageCount(pdfDoc.numPages);
-    };
-
     // -----------------------------
     // Toggle Left Sidebar
     // -----------------------------
@@ -145,6 +136,27 @@ export default function Lecture() {
         } else {
             // Start recording
             try {
+                const lectureId = getLectureId();
+
+                // Call transcription start API
+                try {
+                    const res = await api.post(`/transcription/start/${lectureId}`);
+                    const transcriptId = res?.data?.transcript_id || res?.transcript_id || res?._id || res?.id;
+
+                    if (transcriptId) {
+                        localStorage.setItem("transcriptId", transcriptId);
+                        console.log("Transcription started, ID:", transcriptId);
+                    } else {
+                        console.warn("No transcript_id found in response:", res);
+                        toast.error("Không tìm thấy transcript_id từ API");
+                        return;
+                    }
+                } catch (apiErr) {
+                    console.error("Failed to start transcription:", apiErr);
+                    toast.error("Không thể bắt đầu transcription");
+                    return;
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const mediaRecorder = new MediaRecorder(stream);
                 recordedChunksRef.current = [];
@@ -160,6 +172,39 @@ export default function Lecture() {
                     setRecordedBlob(blob);
                     stream.getTracks().forEach((track) => track.stop());
                     toast.success("Ghi âm hoàn tất");
+
+                    // Upload recorded audio to transcription endpoint
+                    const uploadRecording = async () => {
+                        try {
+                            const transcriptId = localStorage.getItem("transcriptId");
+                            if (!transcriptId) {
+                                console.warn("No transcriptId found in localStorage");
+                                toast.error("Không tìm thấy transcriptId");
+                                return;
+                            }
+
+                            const formData = new FormData();
+                            formData.append("audio", blob, "recording.webm");
+
+                            const res = await api.post(
+                                `/transcription/upload/${transcriptId}`,
+                                formData,
+                                {
+                                    headers: {
+                                        "Content-Type": "multipart/form-data",
+                                    },
+                                }
+                            );
+
+                            console.log("Recording uploaded successfully:", res);
+                            toast.success("Ghi âm đã được tải lên");
+                        } catch (err) {
+                            console.error("Failed to upload recording:", err);
+                            toast.error("Không thể tải lên ghi âm: " + (err?.message || "Unknown error"));
+                        }
+                    };
+
+                    uploadRecording();
                 };
 
                 mediaRecorder.start();
@@ -198,6 +243,14 @@ export default function Lecture() {
         const role = localStorage.getItem("userRole");
         setUserRole(role);
     }, []);
+
+    // Get lectureId from localStorage
+    const getLectureId = () => {
+        const stored = localStorage.getItem("lectureId");
+        return stored && stored !== "undefined" && stored !== "null"
+            ? stored
+            : "69182ad0faf294fc3f48c783";
+    };
 
     // Fetch transcription / audio for current lecture
     useEffect(() => {
@@ -241,45 +294,38 @@ export default function Lecture() {
     }, []);
 
     return (
-        <div className="w-full h-screen flex flex-col bg-gray-50">
-
+        <div className="w-full h-screen flex flex-col bg-gray-100">
             {/* HEADER */}
-            <div className="h-14 bg-white border-b shadow-sm px-6 flex items-center justify-between sticky top-0 z-20">
-                <h1 className="text-xl font-semibold text-gray-800 tracking-tight">
-                    📚 Lecture View
-                </h1>
+            <div className="h-14 bg-white shadow-md px-6 flex items-center justify-between">
+                <h1 className="text-xl font-semibold text-gray-700">Lecture View</h1>
 
-                <div className="flex items-center gap-2">
-
-                    {/* RECORDING BUTTON */}
+                <div className="flex items-center gap-3">
+                    {/* Recording Button - only show for teachers */}
                     {userRole === "teacher" && (
                         <button
                             onClick={toggleRecording}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition flex items-center gap-1
-                            ${isRecording
-                                    ? "bg-red-500 hover:bg-red-600 text-white shadow"
-                                    : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${isRecording
+                                ? "bg-red-500 hover:bg-red-600 text-white"
+                                : "bg-gray-200 hover:bg-gray-300 text-gray-700"
                                 }`}
                         >
                             {isRecording ? "⏹ Dừng ghi" : "🎤 Ghi âm"}
                         </button>
-                    )}
-
-                    {/* LEFT SIDEBAR TOGGLE */}
+                    )}                    {/* Toggle Left */}
                     <button
                         onClick={toggleLeft}
-                        className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm flex items-center gap-1"
+                        className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
                     >
-                        {leftOpen ? "📑 Hide Slides" : "📑 Show Slides"}
+                        {leftOpen ? "Hide Slides" : "Show Slides"}
                     </button>
 
-                    {/* RIGHT SIDEBAR TOGGLE (STUDENT ONLY) */}
+                    {/* Toggle Right */}
                     {userRole === "student" && (
                         <button
                             onClick={toggleRight}
-                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm flex items-center gap-1"
+                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
                         >
-                            {rightOpen ? "📝 Hide Notes" : "📝 Show Notes"}
+                            {rightOpen ? "Hide Notes" : "Show Notes"}
                         </button>
                     )}
 
@@ -287,42 +333,33 @@ export default function Lecture() {
                         onClick={() => (window.location.href = "/")}
                         className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
                     >
-                        ⬅ Home
+                        Back Home
                     </button>
                 </div>
             </div>
 
-            {/* MAIN CONTENT */}
+            {/* CONTENT */}
             <div className="flex flex-1 overflow-hidden">
-
                 {/* LEFT SIDEBAR */}
                 {leftOpen && (
                     <div
-                        className="bg-white border-r shadow-inner overflow-y-auto p-4 space-y-4"
+                        className="bg-white border-r shadow-sm overflow-y-auto p-3 space-y-4"
                         style={{ width: leftWidth }}
                     >
-                        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                        <h3 className="text-sm font-semibold text-gray-700">
                             Slides ({pageCount})
                         </h3>
 
                         {pdf &&
                             Array.from({ length: pageCount }, (_, i) => (
-                                <div
+                                <PdfThumbnail
                                     key={i}
-                                    className={`rounded-lg overflow-hidden border cursor-pointer transition
-                                ${pageNumber === i + 1
-                                            ? "shadow-md border-blue-400"
-                                            : "border-gray-300 hover:border-gray-400"
-                                        }`}
+                                    pdf={pdf}
+                                    pageNumber={i + 1}
+                                    sidebarWidth={leftWidth}
+                                    isActive={pageNumber === i + 1}
                                     onClick={() => setPageNumber(i + 1)}
-                                >
-                                    <PdfThumbnail
-                                        pdf={pdf}
-                                        pageNumber={i + 1}
-                                        sidebarWidth={leftWidth - 32}
-                                        isActive={pageNumber === i + 1}
-                                    />
-                                </div>
+                                />
                             ))}
                     </div>
                 )}
@@ -331,33 +368,31 @@ export default function Lecture() {
                 {leftOpen && (
                     <div
                         onMouseDown={() => setIsResizingLeft(true)}
-                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400 transition"
+                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
                     ></div>
                 )}
 
-                {/* MAIN PDF VIEWER */}
-                <div className="flex-1 overflow-auto p-6">
-                    <div className="max-w-5xl mx-auto flex justify-center">
+                {/* MAIN VIEWER AREA */}
+                <div className="flex-1 overflow-auto p-6 bg-gray-50">
+                    <div className="flex justify-center">
                         {pdf ? (
-                            <div className="rounded-xl shadow-md bg-white p-4 border">
-                                <InteractivePdfPage
-                                    pdf={pdf}
-                                    pageNumber={pageNumber}
-                                    onPlayAudio={handlePlayAudioForNote}
-                                    onNotesChange={setAllNotes}
-                                    jumpToNote={jumpToNote}
-                                />
-                            </div>
+                            <InteractivePdfPage
+                                pdf={pdf}
+                                pageNumber={pageNumber}
+                                onPlayAudio={handlePlayAudioForNote}
+                                onNotesChange={(notes) => {
+                                    setAllNotes(notes);
+                                }}
+                                jumpToNote={jumpToNote}
+                            />
                         ) : (
-                            <div className="text-gray-500 pt-24 animate-pulse text-lg">
-                                Đang tải PDF...
-                            </div>
+                            <p className="text-gray-500">Loading PDF...</p>
                         )}
                     </div>
                 </div>
 
                 {/* RIGHT RESIZER */}
-                {userRole === "student" && rightOpen && (
+                {rightOpen && (
                     <div
                         onMouseDown={() => setIsResizingRight(true)}
                         className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
@@ -365,58 +400,79 @@ export default function Lecture() {
                 )}
 
                 {/* RIGHT SIDEBAR */}
-                {userRole === "student" && rightOpen && (
+                {rightOpen && (
                     <div
-                        className="bg-white border-l shadow-inner p-5 flex flex-col"
-                        style={{ width: rightWidth }}
+                        className="bg-white border-l shadow-inner flex flex-col"
+                        style={{ width: rightWidth, height: "100%" }}
                     >
-                        {/* NOTES */}
-                        <h2 className="text-lg font-bold text-gray-800 mb-4">📒 Notes</h2>
+                        {/* Scrollable main area: Notes + Transcript */}
+                        <div className="p-5 overflow-y-auto flex-1">
+                            {/* NOTES SECTION - only show for students */}
+                            {userRole === "student" && (
+                                <>
+                                    <h2 className="text-lg font-bold text-gray-700 mb-4">Notes</h2>
 
-                        <div className="flex-1 overflow-y-auto space-y-3">
+                                    {allNotes.length === 0 && (
+                                        <p className="text-gray-500 text-sm">Chưa có ghi chú nào.</p>
+                                    )}
 
-                            {allNotes.length === 0 && (
-                                <p className="text-gray-500 text-sm">Chưa có ghi chú nào.</p>
+                                    <div className="space-y-3 mb-6">
+                                        {allNotes.map((note) => (
+                                            <button
+                                                key={note.id}
+                                                className="w-full text-left p-3 bg-gray-50 border rounded-lg shadow-sm hover:bg-gray-100 transition"
+                                                onClick={() => {
+                                                    setPageNumber(note.page);
+                                                    setTimeout(() => {
+                                                        setJumpToNote(note);
+                                                    }, 50);
+                                                }}
+                                            >
+                                                <p className="font-medium">Trang {note.page}</p>
+                                                <p className="text-xs text-gray-500 truncate">
+                                                    {note.content || "(Chưa có nội dung)"}
+                                                </p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
                             )}
 
-                            {allNotes.map((note) => (
-                                <button
-                                    key={note.id}
-                                    className="w-full text-left p-3 bg-gray-50 border rounded-lg shadow-sm hover:bg-blue-100 transition"
-                                    onClick={() => {
-                                        setPageNumber(note.page);
-                                        setTimeout(() => setJumpToNote(note), 50);
-                                    }}
-                                >
-                                    <p className="font-medium text-gray-800">
-                                        Trang {note.page}
-                                    </p>
-                                    <p className="text-xs text-gray-500 truncate">
-                                        {note.content || "(Không có nội dung)"}
-                                    </p>
-                                </button>
-                            ))}
-
-                            {/* TRANSCRIPT */}
-                            <h3 className="text-lg font-bold text-gray-800 mt-6 mb-2">
-                                🎧 Transcript
+                            {/* TRANSCRIPT SECTION */}
+                            <h3 className="text-lg font-bold text-gray-700 mb-3">
+                                Transcript
                             </h3>
-
                             {transcripts.length === 0 ? (
                                 <p className="text-gray-500 text-sm">Chưa có transcript.</p>
+                            ) : (
+                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <p className="text-xs font-semibold text-gray-600 mb-2">
+                                        Transcript {selectedTranscriptIndex + 1}
+                                    </p>
+                                    <p className="text-sm text-gray-700">
+                                        {transcripts[selectedTranscriptIndex]?.full_text}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* AUDIO SECTION - sticky bottom, visually prominent */}
+                        <div className="p-4 border-t bg-white sticky bottom-0 shadow-lg">
+                            <h3 className="text-lg font-bold text-gray-700 mb-2">Audio</h3>
+                            {transcripts.length === 0 ? (
+                                <p className="text-gray-500 text-sm">Chưa có audio.</p>
                             ) : (
                                 <div className="space-y-2">
                                     {transcripts.map((item, index) => (
                                         <button
-                                            key={index}
+                                            key={item._id || index}
                                             onClick={() => {
                                                 setSelectedTranscriptIndex(index);
-                                                if (item.audio_url) setAudioUrl(item.audio_url);
+                                                if (item?.audio_url) setAudioUrl(item.audio_url);
                                             }}
-                                            className={`w-full text-left p-3 rounded-lg border transition shadow-sm
-                                            ${selectedTranscriptIndex === index
-                                                    ? "bg-blue-100 border-blue-400"
-                                                    : "bg-gray-50 border-gray-200 hover:bg-gray-200"
+                                            className={`w-full text-left p-3 rounded-lg border transition ${selectedTranscriptIndex === index
+                                                ? "bg-blue-100 border-blue-400 shadow-md"
+                                                : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                                                 }`}
                                         >
                                             <p className="text-sm font-semibold text-gray-700">
@@ -427,22 +483,35 @@ export default function Lecture() {
                                             </p>
                                         </button>
                                     ))}
-                                </div>
-                            )}
 
-                            {/* AUDIO PLAYER */}
-                            {audioUrl && (
-                                <div className="bg-gray-50 p-4 rounded-xl border shadow-inner mt-4">
-                                    <audio
-                                        src={audioUrl}
-                                        ref={audioRef}
-                                        controls
-                                        className="w-full"
-                                    />
-                                    <div className="flex justify-between text-xs text-gray-600 pt-1">
-                                        <span>{Math.floor(audioCurrentTime)}s</span>
-                                        <span>{Math.floor(audioDuration)}s</span>
-                                    </div>
+                                    {/* Audio Player */}
+                                    {audioUrl && (
+                                        <div className="bg-gray-50 p-3 rounded-lg space-y-2 mt-3">
+                                            <audio
+                                                ref={audioRef}
+                                                src={audioUrl}
+                                                onPlay={() => setIsPlayingAudio(true)}
+                                                onPause={() => setIsPlayingAudio(false)}
+                                                onTimeUpdate={() => {
+                                                    if (audioRef.current) {
+                                                        setAudioCurrentTime(audioRef.current.currentTime);
+                                                    }
+                                                }}
+                                                onLoadedMetadata={() => {
+                                                    if (audioRef.current) {
+                                                        setAudioDuration(audioRef.current.duration);
+                                                    }
+                                                }}
+                                                className="w-full"
+                                                controls
+                                            />
+                                            <div className="flex items-center justify-between text-xs text-gray-600">
+                                                <div>{Math.floor(audioCurrentTime)}s</div>
+                                                <div>/</div>
+                                                <div>{Math.floor(audioDuration)}s</div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -451,5 +520,4 @@ export default function Lecture() {
             </div>
         </div>
     );
-
 }
