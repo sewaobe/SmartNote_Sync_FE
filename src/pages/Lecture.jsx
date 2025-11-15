@@ -9,6 +9,26 @@ export default function Lecture() {
     const [pdf, setPdf] = useState(null);
     const [pageCount, setPageCount] = useState(0);
     const [pageNumber, setPageNumber] = useState(1);
+    const [initialNotesFromServer, setInitialNotesFromServer] = useState([]);
+    const [assignMap, setAssignMap] = useState({});
+    // Audio and Transcript states
+    const [audioUrl, setAudioUrl] = useState(null);
+    const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+    const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+    const [audioDuration, setAudioDuration] = useState(0);
+    const [transcripts, setTranscripts] = useState([]); // array of transcripts
+    const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState(0); // track which transcript is selected
+    const [pdfPresignedUrl, setPdfPresignedUrl] = useState(null); // store presigned PDF URL
+    const audioRef = React.useRef(null);
+
+    // Recording states
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordedBlob, setRecordedBlob] = useState(null);
+    const mediaRecorderRef = React.useRef(null);
+    const recordedChunksRef = React.useRef([]);
+
+    // User role state
+    const [userRole, setUserRole] = useState(null);
 
     // -----------------------------
     // Sidebar resize / toggle states
@@ -124,8 +144,84 @@ export default function Lecture() {
     };
 
     const handlePlayAudioForNote = (note) => {
-        console.log("Phát lại timestamp:", note.audioTime);
-        // TODO: Kết nối audio recorder player
+        try {
+            if (!note) return;
+
+            const noteCreatedAt = note.created_at || note.createdAt || note.created;
+            if (!noteCreatedAt) {
+                toast.error("Không có thời gian tạo cho ghi chú");
+                return;
+            }
+
+            console.log("transcripts", transcripts);
+            console.log("note.transcript_id", note.transcript_id);
+            // choose transcript: prefer note.transcript_id if present, otherwise currently selected transcript
+            let transcript = null;
+            if (note.transcript_id) {
+                transcript = transcripts.find(
+                    (t) =>
+                        t._id === note.transcript_id
+                );
+            }
+
+            if (!transcript || !transcript.audio_url) {
+                toast.error("Không tìm thấy audio tương ứng để phát");
+                return;
+            }
+
+            const transcriptCreatedAt =
+                transcript.created_at || transcript.createdAt || transcript.uploaded_at || transcript.timestamp || null;
+
+            // If we don't have a creation time for the transcript, just play from start
+            let offsetSeconds = 0;
+            if (transcriptCreatedAt) {
+                const noteTime = new Date(noteCreatedAt).getTime();
+                const recordTime = new Date(transcriptCreatedAt).getTime();
+                if (!isNaN(noteTime) && !isNaN(recordTime)) {
+                    offsetSeconds = (noteTime - recordTime) / 1000;
+                    if (offsetSeconds < 0) offsetSeconds = 0;
+                }
+            }
+
+            // ensure selected transcript index and audio url are set
+            const idx = transcripts.findIndex((t) => t === transcript);
+            if (idx >= 0) setSelectedTranscriptIndex(idx);
+            setAudioUrl(transcript.audio_url);
+
+            // play at offset when audio metadata is ready
+            const tryPlay = () => {
+                const audio = audioRef.current;
+                if (!audio) return;
+
+                const setAndPlay = () => {
+                    try {
+                        if (!isNaN(offsetSeconds) && typeof offsetSeconds === "number") {
+                            // clamp to duration if available
+                            const dur = audio.duration || 0;
+                            const seekTo = dur > 0 ? Math.min(offsetSeconds, dur) : offsetSeconds;
+                            audio.currentTime = seekTo;
+                        }
+                    } catch (e) {
+                        console.warn("Cannot set currentTime yet", e);
+                    }
+
+                    audio.play().catch((err) => console.error("Audio play failed:", err));
+                };
+
+                if (audio.readyState >= 1) {
+                    setAndPlay();
+                } else {
+                    audio.addEventListener("loadedmetadata", setAndPlay, { once: true });
+                }
+            };
+
+            // small delay to ensure audio element updates after setAudioUrl
+            setTimeout(() => tryPlay(), 80);
+            toast.success(`Phát audio từ ${Math.floor(offsetSeconds)} giây`);
+        } catch (err) {
+            console.error("handlePlayAudioForNote error:", err);
+            toast.error("Không thể phát audio");
+        }
     };
 
     const toggleRecording = async () => {
@@ -219,24 +315,7 @@ export default function Lecture() {
     }; const [allNotes, setAllNotes] = useState([]);
     const [jumpToNote, setJumpToNote] = useState(null);
 
-    // Audio and Transcript states
-    const [audioUrl, setAudioUrl] = useState(null);
-    const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-    const [audioCurrentTime, setAudioCurrentTime] = useState(0);
-    const [audioDuration, setAudioDuration] = useState(0);
-    const [transcripts, setTranscripts] = useState([]); // array of transcripts
-    const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState(0); // track which transcript is selected
-    const [pdfPresignedUrl, setPdfPresignedUrl] = useState(null); // store presigned PDF URL
-    const audioRef = React.useRef(null);
 
-    // Recording states
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordedBlob, setRecordedBlob] = useState(null);
-    const mediaRecorderRef = React.useRef(null);
-    const recordedChunksRef = React.useRef([]);
-
-    // User role state
-    const [userRole, setUserRole] = useState(null);
 
     // Load user role from localStorage
     useEffect(() => {
@@ -292,6 +371,83 @@ export default function Lecture() {
 
         fetchTranscription();
     }, []);
+
+    // Load notes for this lecture (teacher view)
+    useEffect(() => {
+        const loadNotes = async () => {
+            try {
+                const lectureId = getLectureId();
+                const res = await api.get(`/notes/lecture/${lectureId}`);
+                const payload = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+                setInitialNotesFromServer(payload);
+            } catch (err) {
+                console.error("Failed to load notes for lecture:", err);
+            }
+        };
+
+        loadNotes();
+    }, []);
+
+    // Handlers for note create/update/delete coming from InteractivePdfPage
+    const handleNoteCreate = async (note, posPx) => {
+        try {
+            const lectureId = getLectureId();
+            // prefer a transcript that is currently queued (in-progress) for this lecture
+            const queued = transcripts.find((t) => t?.status === "queued");
+            const transcriptId = queued?._id || undefined;
+
+            const body = {
+                lecture_id: lectureId,
+                position: { x: posPx.x, y: posPx.y },
+                content: note.content || "",
+                created_at: new Date().toISOString(),
+                transcript_id: transcriptId || undefined,
+                page_index: note.page,
+            };
+
+            const res = await api.post(`/notes`, body);
+            const created = res?.data ?? res;
+            const createdNote = created?.data ?? created;
+            const serverId = createdNote?._id || createdNote?.id || createdNote?.note_id || createdNote?.note?.id;
+
+            if (serverId) {
+                // inform child to replace local id with server id
+                setAssignMap((m) => ({ ...m, [note.id]: serverId }));
+                console.log("Note created on server, mapping", note.id, "->", serverId);
+            } else {
+                console.warn("Cannot determine server id for created note", created);
+            }
+        } catch (err) {
+            console.error("Failed to create note on server:", err);
+            toast.error("Không thể lưu ghi chú");
+        }
+    };
+
+    const handleNoteUpdate = async (note) => {
+        try {
+            const serverId = assignMap[note.id] || note.id;
+            if (!serverId) return;
+            if (/^\d+$/.test(String(serverId))) return; // still local id
+
+            const body = { content: note.content };
+            await api.put(`/notes/${serverId}`, body);
+        } catch (err) {
+            console.error("Failed to update note on server:", err);
+            toast.error("Không thể cập nhật ghi chú");
+        }
+    };
+
+    const handleNoteDelete = async (localId) => {
+        try {
+            const serverId = assignMap[localId] || localId;
+            if (!serverId) return;
+            if (/^\d+$/.test(String(serverId))) return;
+            await api.delete(`/notes/${serverId}`);
+        } catch (err) {
+            console.error("Failed to delete note on server:", err);
+            toast.error("Không thể xóa ghi chú");
+        }
+    };
 
     return (
         <div className="w-full h-screen flex flex-col bg-gray-100">
@@ -384,6 +540,11 @@ export default function Lecture() {
                                     setAllNotes(notes);
                                 }}
                                 jumpToNote={jumpToNote}
+                                initialNotes={initialNotesFromServer}
+                                onNoteCreate={handleNoteCreate}
+                                onNoteUpdate={handleNoteUpdate}
+                                onNoteDelete={handleNoteDelete}
+                                assignMap={assignMap}
                             />
                         ) : (
                             <p className="text-gray-500">Loading PDF...</p>
