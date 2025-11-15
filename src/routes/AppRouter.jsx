@@ -2,7 +2,7 @@ import { Route, Routes, useNavigate } from "react-router-dom";
 import { Suspense } from "react";
 import { Toaster } from "sonner";
 import Home from "../pages/Home";
-import Lecture from "../pages/Lecture";
+import NewLecture from "../pages/NewLecture";
 import UploadFile from "../pages/UploadFile";
 import ClassList from "../pages/ClassList";
 
@@ -46,7 +46,7 @@ export const AppRouter = () => {
           {/* Routes đơn giản */}
           <Route path="/" element={<Home />} />
           <Route path="/upload" element={<UploadFile />} />
-          <Route path="/lecture" element={<Lecture />} />
+          <Route path="/lecture" element={<NewLecture />} />
           <Route path="/classes" element={<div><ClassList /></div>} />
           <Route path="/some-path" element={<div>Some Path</div>} />
         </Routes>
