@@ -1,8 +1,9 @@
-import { Route, Routes, useNavigate } from 'react-router-dom';
-import { Suspense } from 'react';
-import { Toaster } from 'sonner';
-import Home from '../pages/Home';
-import Lecture from '../pages/Lecture';
+import { Route, Routes, useNavigate } from "react-router-dom";
+import { Suspense } from "react";
+import { Toaster } from "sonner";
+import Home from "../pages/Home";
+import Lecture from "../pages/Lecture";
+import UploadFile from "../pages/UploadFile";
 
 const App = () => {
   const navigate = useNavigate();
@@ -11,9 +12,9 @@ const App = () => {
     <div>
       <button
         onClick={() => {
-          navigate('/some-path');
+          navigate("/some-path");
         }}
-        className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition'
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
       >
         Button Demo
       </button>
@@ -25,7 +26,7 @@ export const AppRouter = () => {
   return (
     <>
       <Toaster
-        position='top-right'
+        position="top-right"
         richColors
         toastOptions={{
           classNames: {
@@ -42,9 +43,10 @@ export const AppRouter = () => {
       <Suspense fallback={<div>Loading...</div>}>
         <Routes>
           {/* Routes đơn giản */}
-          <Route path='/' element={<Home />} />
-          <Route path='/lecture' element={<Lecture />} />
-          <Route path='/some-path' element={<div>Some Path</div>} />
+          <Route path="/" element={<Home />} />
+          <Route path="/upload" element={<UploadFile />} />
+          <Route path="/lecture" element={<Lecture />} />
+          <Route path="/some-path" element={<div>Some Path</div>} />
         </Routes>
       </Suspense>
     </>
