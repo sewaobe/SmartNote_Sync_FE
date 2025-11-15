@@ -43,7 +43,7 @@ const formatTimeFromSeconds = (seconds) => {
 };
 
 // Simulate chatbot response with typing effect and timestamps
-export const sendChatMessage = async (message, lectureId) => {
+export const sendChatMessage = async (message, lectureId, retryCount = 0) => {
   try {
     // Call real backend API
     const response = await axios.post(
@@ -53,7 +53,7 @@ export const sendChatMessage = async (message, lectureId) => {
         question: message,
       },
       {
-        timeout: 10000,
+        timeout: 60000, // Increase timeout to 60 seconds
       },
     );
     console.log('Chatbot API response:', response);
