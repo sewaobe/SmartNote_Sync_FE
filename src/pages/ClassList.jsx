@@ -11,6 +11,16 @@ export default function ClassList() {
   const [lecturesMap, setLecturesMap] = useState({});
   const navigate = useNavigate();
 
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState(null);
+
+  // Get userRole from localStorage
+  const userRole = localStorage.getItem("userRole");
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -116,6 +126,79 @@ export default function ClassList() {
     );
   });
 
+  // Handle upload file change
+  const handleUploadFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type === "application/pdf") {
+      setUploadFile(file);
+    } else {
+      alert("Chỉ hỗ trợ file PDF");
+    }
+  };
+
+  // Handle upload submission
+  const handleUploadSubmit = async () => {
+    if (!uploadFile) {
+      alert("Vui lòng chọn file");
+      return;
+    }
+    if (!uploadTitle.trim()) {
+      alert("Vui lòng nhập tiêu đề");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("title", uploadTitle);
+
+      const res = await api.post(
+        `/lectures/create/${selectedClassId}`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      alert("Upload thành công!");
+      // Reset modal
+      setUploadFile(null);
+      setUploadTitle("");
+      setShowUploadModal(false);
+
+      // Refresh lectures list for this class if already open
+      if (lecturesMap[selectedClassId]?.data) {
+        setLecturesMap((m) => ({
+          ...m,
+          [selectedClassId]: {
+            ...(m[selectedClassId] || {}),
+            data: [res.data, ...(m[selectedClassId].data || [])],
+          },
+        }));
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert(`Upload lỗi: ${err?.response?.data?.message || err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openUploadModal = (classId) => {
+    setSelectedClassId(classId);
+    setShowUploadModal(true);
+  };
+
+  const closeUploadModal = () => {
+    setShowUploadModal(false);
+    setUploadFile(null);
+    setUploadTitle("");
+    setSelectedClassId(null);
+  };
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
@@ -179,6 +262,15 @@ export default function ClassList() {
                     {c.updatedAt ? new Date(c.updatedAt).toLocaleString() : "-"}
                   </div>
                   <div className="flex items-center gap-2">
+                    {userRole === "teacher" && (
+                      <button
+                        onClick={() => openUploadModal(c.id)}
+                        className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        Upload
+                      </button>
+                    )}
+
                     <button
                       onClick={() => toggleLectures(c.id)}
                       className="px-3 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
@@ -277,6 +369,60 @@ export default function ClassList() {
           </div>
         )}
       </div>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
+            <h2 className="text-lg font-semibold mb-4">Upload Bài giảng</h2>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Tiêu đề</label>
+              <input
+                type="text"
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                placeholder="Nhập tiêu đề bài giảng"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                disabled={uploading}
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">File PDF</label>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleUploadFileChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                disabled={uploading}
+              />
+              {uploadFile && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✓ {uploadFile.name}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleUploadSubmit}
+                disabled={uploading}
+                className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400"
+              >
+                {uploading ? "Đang upload..." : "Upload"}
+              </button>
+              <button
+                onClick={closeUploadModal}
+                disabled={uploading}
+                className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition disabled:bg-gray-200"
+              >
+                Hủy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
