@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import Home from "../pages/Home";
 import Lecture from "../pages/Lecture";
 import UploadFile from "../pages/UploadFile";
+import ClassList from "../pages/ClassList";
 
 const App = () => {
   const navigate = useNavigate();
@@ -46,6 +47,7 @@ export const AppRouter = () => {
           <Route path="/" element={<Home />} />
           <Route path="/upload" element={<UploadFile />} />
           <Route path="/lecture" element={<Lecture />} />
+          <Route path="/classes" element={<div><ClassList /></div>} />
           <Route path="/some-path" element={<div>Some Path</div>} />
         </Routes>
       </Suspense>

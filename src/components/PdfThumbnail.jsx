@@ -42,7 +42,7 @@ export default function PdfThumbnail({ pdf, pageNumber, sidebarWidth, onClick, i
     return (
         <div
             onClick={onClick}
-            className={`cursor-pointer bg-white border rounded-xl shadow-sm hover:shadow-md transition-all
+            className={`cursor-pointer bg-white  rounded-xl shadow-sm hover:shadow-md transition-all
             ${isActive ? "ring-2 ring-blue-500" : "ring-1 ring-gray-200"}`}
             style={{ padding: 6 }}
         >
