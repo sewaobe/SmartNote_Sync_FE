@@ -215,6 +215,58 @@ function LectureContent() {
     fetchTranscription();
   }, []);
 
+  // Fetch notes for current lecture
+  useEffect(() => {
+    const fetchNotes = async () => {
+      const stored = localStorage.getItem("lectureId");
+      const lectureId =
+        stored && stored !== "undefined" && stored !== "null" ? stored : null;
+
+      if (!lectureId) {
+        // nothing to do
+        return;
+      }
+
+      try {
+        const res = await api.get(`/notes/lecture/${lectureId}`);
+        // API might return { message, data: [...] } or an array directly
+        console.log("Note: ", res);
+        const items = res?.data ?? res;
+
+        if (!items || items.length === 0) {
+          setAllNotes([]);
+          return;
+        }
+
+        // Normalize notes to a predictable shape used by the UI and viewer
+        const normalized = items.map((n, idx) => {
+          const rawId = (n._id && (n._id.$oid || n._id)) || n.id || String(idx);
+          const position = n.position || n.pos || { x: 0, y: 0 };
+          const page = n.page || n.page_number || 1;
+
+          return {
+            // id: string
+            id: String(rawId),
+            // keep original raw object too for future server sync
+            _raw: n,
+            content: n.content || n.text || "",
+            page,
+            position,
+          };
+        });
+
+        setAllNotes(normalized);
+      } catch (err) {
+        console.error("Failed to fetch notes", err);
+        const message =
+          err?.response?.data?.message || err.message || "Lỗi khi lấy notes";
+        toast.error(`Không thể lấy notes: ${message}`);
+      }
+    };
+
+    fetchNotes();
+  }, []);
+
   return (
     <div className='w-full h-screen flex flex-col bg-gray-100'>
       {/* HEADER */}
@@ -301,6 +353,7 @@ function LectureContent() {
                   setAllNotes(notes);
                 }}
                 jumpToNote={jumpToNote}
+                initialNotes={allNotes}
               />
             ) : (
               <p className='text-gray-500'>Loading PDF...</p>
