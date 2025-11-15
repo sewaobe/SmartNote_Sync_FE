@@ -46,7 +46,7 @@ export default function Home() {
       if (token) {
         setAuthToken(token);
         localStorage.setItem("userRole", role);
-        navigate("/upload");
+        navigate("/classes");
       } else {
         alert("Đăng nhập thất bại: token không tìm thấy.");
       }

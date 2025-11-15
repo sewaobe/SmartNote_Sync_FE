@@ -162,6 +162,7 @@ export default function Lecture() {
 
       try {
         const res = await api.get(`/transcription/lecture/${lectureId}`);
+        console.log(res);
         // server returns { message, data: [ ... ], count }
         const items = res?.data ?? res;
 
