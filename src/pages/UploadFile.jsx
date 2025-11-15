@@ -50,9 +50,11 @@ export default function UploadFile() {
       // Reset form
       setFile(null);
       setTitle("");
+      console.log(res.data);
 
       // Store lecture info and navigate to lecture page
-      localStorage.setItem("lectureId", res._id || res.id);
+      localStorage.setItem("lectureId", res.data._id || res.data.id);
+      localStorage.setItem("lecturePdfUrl", res.data.pdf_url || "");
       navigate("/lecture");
     } catch (err) {
       console.error(err);

@@ -3,6 +3,8 @@ import pdfjsLib from "../pdf-worker";
 import PdfThumbnail from "../components/PdfThumbnail";
 import PdfContinuousViewer from "../components/PdfContinuousViewer";
 import InteractivePdfPage from "../components/InteractivePdfPage";
+import api from "../api/axiosClient";
+import { toast } from "sonner";
 
 export default function Lecture() {
   const [pdf, setPdf] = useState(null);
@@ -60,10 +62,40 @@ export default function Lecture() {
   // Load PDF from localStorage
   // -----------------------------
   useEffect(() => {
-    const base64 = localStorage.getItem("uploadedSlide");
-    if (!base64) return;
+    const loadPdfData = async () => {
+      const pdfUrl = localStorage.getItem("lecturePdfUrl");
 
-    loadPdf(base64);
+      if (!pdfUrl) {
+        toast.error("Không tìm thấy PDF URL");
+        return;
+      }
+
+      try {
+        // 1. Lấy presigned URL
+        const res = await api.get(`/files/presigned/${pdfUrl}`);
+        const presignedUrl = res.url;
+
+        if (!presignedUrl) throw new Error("Missing presigned URL");
+
+        console.log("Presigned:", presignedUrl);
+
+        // 2. Fetch PDF as blob từ presigned URL
+        const loadingTask = pdfjsLib.getDocument({
+          url: presignedUrl,
+          withCredentials: false,
+        });
+        const pdfDoc = await loadingTask.promise;
+        setPdf(pdfDoc);
+        setPageCount(pdfDoc.numPages);
+
+        console.log("PDF loaded successfully, pages:", pdfDoc.numPages);
+      } catch (err) {
+        console.error("Load PDF error:", err);
+        toast.error("Không thể load PDF: " + err.message);
+      }
+    };
+
+    loadPdfData();
   }, []);
 
   const loadPdf = async (base64) => {
@@ -113,8 +145,50 @@ export default function Lecture() {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
-  const [transcript, setTranscript] = useState("");
+  const [transcripts, setTranscripts] = useState([]); // array of transcripts
+  const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState(0); // track which transcript is selected
+  const [pdfPresignedUrl, setPdfPresignedUrl] = useState(null); // store presigned PDF URL
   const audioRef = React.useRef(null);
+
+  // Fetch transcription / audio for current lecture
+  useEffect(() => {
+    const fetchTranscription = async () => {
+      // read lectureId from localStorage but guard against string 'undefined'/'null'
+      const stored = localStorage.getItem("lectureId");
+      const lectureId =
+        stored && stored !== "undefined" && stored !== "null"
+          ? stored
+          : "69182ad0faf294fc3f48c783";
+
+      try {
+        const res = await api.get(`/transcription/lecture/${lectureId}`);
+        // server returns { message, data: [ ... ], count }
+        const items = res?.data ?? res;
+
+        if (!items || items.length === 0) {
+          // no transcription available
+          return;
+        }
+
+        // set all transcripts for display
+        setTranscripts(items);
+        setSelectedTranscriptIndex(0); // default to first
+
+        // pick the first item for audio_url
+        const first = items[0];
+        if (first?.audio_url) setAudioUrl(first.audio_url);
+      } catch (err) {
+        console.error("Failed to fetch transcription", err);
+        const message =
+          err?.response?.data?.message ||
+          err.message ||
+          "Lỗi khi lấy transcription";
+        toast.error(`Không thể lấy audio/transcript: ${message}`);
+      }
+    };
+
+    fetchTranscription();
+  }, []);
 
   return (
     <div className="w-full h-screen flex flex-col bg-gray-100">
@@ -248,46 +322,78 @@ export default function Lecture() {
               <h3 className="text-lg font-bold text-gray-700 mb-3">
                 Transcript
               </h3>
-              {transcript ? (
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-700 max-h-56 overflow-y-auto">
-                  {transcript}
-                </div>
-              ) : (
+              {transcripts.length === 0 ? (
                 <p className="text-gray-500 text-sm">Chưa có transcript.</p>
+              ) : (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-600 mb-2">
+                    Transcript {selectedTranscriptIndex + 1}
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    {transcripts[selectedTranscriptIndex]?.full_text}
+                  </p>
+                </div>
               )}
             </div>
 
             {/* AUDIO SECTION - sticky bottom, visually prominent */}
             <div className="p-4 border-t bg-white sticky bottom-0 shadow-lg">
               <h3 className="text-lg font-bold text-gray-700 mb-2">Audio</h3>
-              {audioUrl ? (
-                <div className="bg-gray-50 p-3 rounded-lg space-y-2">
-                  <audio
-                    ref={audioRef}
-                    src={audioUrl}
-                    onPlay={() => setIsPlayingAudio(true)}
-                    onPause={() => setIsPlayingAudio(false)}
-                    onTimeUpdate={() => {
-                      if (audioRef.current) {
-                        setAudioCurrentTime(audioRef.current.currentTime);
-                      }
-                    }}
-                    onLoadedMetadata={() => {
-                      if (audioRef.current) {
-                        setAudioDuration(audioRef.current.duration);
-                      }
-                    }}
-                    className="w-full"
-                    controls
-                  />
-                  <div className="flex items-center justify-between text-xs text-gray-600">
-                    <div>{Math.floor(audioCurrentTime)}s</div>
-                    <div>/</div>
-                    <div>{Math.floor(audioDuration)}s</div>
-                  </div>
-                </div>
-              ) : (
+              {transcripts.length === 0 ? (
                 <p className="text-gray-500 text-sm">Chưa có audio.</p>
+              ) : (
+                <div className="space-y-2">
+                  {transcripts.map((item, index) => (
+                    <button
+                      key={item._id || index}
+                      onClick={() => {
+                        setSelectedTranscriptIndex(index);
+                        if (item?.audio_url) setAudioUrl(item.audio_url);
+                      }}
+                      className={`w-full text-left p-3 rounded-lg border transition ${
+                        selectedTranscriptIndex === index
+                          ? "bg-blue-100 border-blue-400 shadow-md"
+                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-gray-700">
+                        Audio {index + 1}
+                      </p>
+                      <p className="text-xs text-gray-600 truncate">
+                        {item.full_text}
+                      </p>
+                    </button>
+                  ))}
+
+                  {/* Audio Player */}
+                  {audioUrl && (
+                    <div className="bg-gray-50 p-3 rounded-lg space-y-2 mt-3">
+                      <audio
+                        ref={audioRef}
+                        src={audioUrl}
+                        onPlay={() => setIsPlayingAudio(true)}
+                        onPause={() => setIsPlayingAudio(false)}
+                        onTimeUpdate={() => {
+                          if (audioRef.current) {
+                            setAudioCurrentTime(audioRef.current.currentTime);
+                          }
+                        }}
+                        onLoadedMetadata={() => {
+                          if (audioRef.current) {
+                            setAudioDuration(audioRef.current.duration);
+                          }
+                        }}
+                        className="w-full"
+                        controls
+                      />
+                      <div className="flex items-center justify-between text-xs text-gray-600">
+                        <div>{Math.floor(audioCurrentTime)}s</div>
+                        <div>/</div>
+                        <div>{Math.floor(audioDuration)}s</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
