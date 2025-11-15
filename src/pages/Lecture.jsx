@@ -1,12 +1,36 @@
-import React, { useEffect, useState } from "react";
-import pdfjsLib from "../pdf-worker";
-import PdfThumbnail from "../components/PdfThumbnail";
-import PdfContinuousViewer from "../components/PdfContinuousViewer";
-import InteractivePdfPage from "../components/InteractivePdfPage";
-import api from "../api/axiosClient";
-import { toast } from "sonner";
+import React, { useEffect, useState } from 'react';
+import pdfjsLib from '../pdf-worker';
+import PdfThumbnail from '../components/PdfThumbnail';
+import PdfContinuousViewer from '../components/PdfContinuousViewer';
+import InteractivePdfPage from '../components/InteractivePdfPage';
+import api from '../api/axiosClient';
+import { toast } from 'sonner';
+import ChatbotDrawer from '../components/ChatbotDrawer';
+import SummaryModal from '../components/SummaryModal';
+import QuizModal from '../components/QuizModal';
+import {
+  ChatbotProvider,
+  useChatbotContext,
+} from '../components/ChatbotProvider';
+import { useChatbotIntegration } from '../hooks/useChatbotIntegration';
 
 export default function Lecture() {
+  return (
+    <ChatbotProvider
+      lectureId={
+        localStorage.getItem('lectureId') || '69182ad0faf294fc3f48c783'
+      }
+      transcript_id={localStorage.getItem('transcript_id')}
+    >
+      <LectureContent />
+    </ChatbotProvider>
+  );
+}
+
+function LectureContent() {
+  const chatbot = useChatbotContext();
+  const audioRef = React.useRef(null);
+  const { handleAudioTimestampClick } = useChatbotIntegration(audioRef);
   const [pdf, setPdf] = useState(null);
   const [pageCount, setPageCount] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
@@ -38,7 +62,7 @@ export default function Lecture() {
       if (isResizingRight) {
         const newWidth = Math.min(
           Math.max(window.innerWidth - e.clientX, 200),
-          500
+          500,
         );
         setRightWidth(newWidth);
       }
@@ -49,12 +73,12 @@ export default function Lecture() {
       setIsResizingRight(false);
     };
 
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", stopResize);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', stopResize);
 
     return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", stopResize);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', stopResize);
     };
   }, [isResizingLeft, isResizingRight]);
 
@@ -63,10 +87,10 @@ export default function Lecture() {
   // -----------------------------
   useEffect(() => {
     const loadPdfData = async () => {
-      const pdfUrl = localStorage.getItem("lecturePdfUrl");
+      const pdfUrl = localStorage.getItem('lecturePdfUrl');
 
       if (!pdfUrl) {
-        toast.error("Không tìm thấy PDF URL");
+        toast.error('Không tìm thấy PDF URL');
         return;
       }
 
@@ -75,9 +99,9 @@ export default function Lecture() {
         const res = await api.get(`/files/presigned/${pdfUrl}`);
         const presignedUrl = res.url;
 
-        if (!presignedUrl) throw new Error("Missing presigned URL");
+        if (!presignedUrl) throw new Error('Missing presigned URL');
 
-        console.log("Presigned:", presignedUrl);
+        console.log('Presigned:', presignedUrl);
 
         // 2. Fetch PDF as blob từ presigned URL
         const loadingTask = pdfjsLib.getDocument({
@@ -88,10 +112,10 @@ export default function Lecture() {
         setPdf(pdfDoc);
         setPageCount(pdfDoc.numPages);
 
-        console.log("PDF loaded successfully, pages:", pdfDoc.numPages);
+        console.log('PDF loaded successfully, pages:', pdfDoc.numPages);
       } catch (err) {
-        console.error("Load PDF error:", err);
-        toast.error("Không thể load PDF: " + err.message);
+        console.error('Load PDF error:', err);
+        toast.error('Không thể load PDF: ' + err.message);
       }
     };
 
@@ -99,7 +123,7 @@ export default function Lecture() {
   }, []);
 
   const loadPdf = async (base64) => {
-    const raw = atob(base64.split(",")[1]);
+    const raw = atob(base64.split(',')[1]);
     const pdfDoc = await pdfjsLib.getDocument({ data: raw }).promise;
 
     setPdf(pdfDoc);
@@ -133,7 +157,7 @@ export default function Lecture() {
   };
 
   const handlePlayAudioForNote = (note) => {
-    console.log("Phát lại timestamp:", note.audioTime);
+    console.log('Phát lại timestamp:', note.audioTime);
     // TODO: Kết nối audio recorder player
   };
 
@@ -148,17 +172,16 @@ export default function Lecture() {
   const [transcripts, setTranscripts] = useState([]); // array of transcripts
   const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState(0); // track which transcript is selected
   const [pdfPresignedUrl, setPdfPresignedUrl] = useState(null); // store presigned PDF URL
-  const audioRef = React.useRef(null);
 
   // Fetch transcription / audio for current lecture
   useEffect(() => {
     const fetchTranscription = async () => {
       // read lectureId from localStorage but guard against string 'undefined'/'null'
-      const stored = localStorage.getItem("lectureId");
+      const stored = localStorage.getItem('lectureId');
       const lectureId =
-        stored && stored !== "undefined" && stored !== "null"
+        stored && stored !== 'undefined' && stored !== 'null'
           ? stored
-          : "69182ad0faf294fc3f48c783";
+          : '69182ad0faf294fc3f48c783';
 
       try {
         const res = await api.get(`/transcription/lecture/${lectureId}`);
@@ -175,15 +198,16 @@ export default function Lecture() {
         setTranscripts(items);
         setSelectedTranscriptIndex(0); // default to first
 
+        localStorage.setItem('transcript_id', items[0]._id);
         // pick the first item for audio_url
         const first = items[0];
         if (first?.audio_url) setAudioUrl(first.audio_url);
       } catch (err) {
-        console.error("Failed to fetch transcription", err);
+        console.error('Failed to fetch transcription', err);
         const message =
           err?.response?.data?.message ||
           err.message ||
-          "Lỗi khi lấy transcription";
+          'Lỗi khi lấy transcription';
         toast.error(`Không thể lấy audio/transcript: ${message}`);
       }
     };
@@ -192,31 +216,39 @@ export default function Lecture() {
   }, []);
 
   return (
-    <div className="w-full h-screen flex flex-col bg-gray-100">
+    <div className='w-full h-screen flex flex-col bg-gray-100'>
       {/* HEADER */}
-      <div className="h-14 bg-white shadow-md px-6 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-700">Lecture View</h1>
+      <div className='h-14 bg-white shadow-md px-6 flex items-center justify-between'>
+        <h1 className='text-xl font-semibold text-gray-700'>Lecture View</h1>
 
-        <div className="flex items-center gap-3">
+        <div className='flex items-center gap-3'>
+          {/* Chatbot Button */}
+          <button
+            onClick={() => chatbot.setIsChatbotOpen(!chatbot.isChatbotOpen)}
+            className='px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition'
+          >
+            💬 Chat
+          </button>
+
           {/* Toggle Left */}
           <button
             onClick={toggleLeft}
-            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
+            className='px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm'
           >
-            {leftOpen ? "Hide Slides" : "Show Slides"}
+            {leftOpen ? 'Hide Slides' : 'Show Slides'}
           </button>
 
           {/* Toggle Right */}
           <button
             onClick={toggleRight}
-            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
+            className='px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm'
           >
-            {rightOpen ? "Hide Notes" : "Show Notes"}
+            {rightOpen ? 'Hide Notes' : 'Show Notes'}
           </button>
 
           <button
-            onClick={() => (window.location.href = "/")}
-            className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
+            onClick={() => (window.location.href = '/')}
+            className='px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm'
           >
             Back Home
           </button>
@@ -224,14 +256,14 @@ export default function Lecture() {
       </div>
 
       {/* CONTENT */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className='flex flex-1 overflow-hidden'>
         {/* LEFT SIDEBAR */}
         {leftOpen && (
           <div
-            className="bg-white border-r shadow-sm overflow-y-auto p-3 space-y-4"
+            className='bg-white border-r shadow-sm overflow-y-auto p-3 space-y-4'
             style={{ width: leftWidth }}
           >
-            <h3 className="text-sm font-semibold text-gray-700">
+            <h3 className='text-sm font-semibold text-gray-700'>
               Slides ({pageCount})
             </h3>
 
@@ -253,13 +285,13 @@ export default function Lecture() {
         {leftOpen && (
           <div
             onMouseDown={() => setIsResizingLeft(true)}
-            className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
+            className='w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400'
           ></div>
         )}
 
         {/* MAIN VIEWER AREA */}
-        <div className="flex-1 overflow-auto p-6 bg-gray-50">
-          <div className="flex justify-center">
+        <div className='flex-1 overflow-auto p-6 bg-gray-50'>
+          <div className='flex justify-center'>
             {pdf ? (
               <InteractivePdfPage
                 pdf={pdf}
@@ -271,7 +303,7 @@ export default function Lecture() {
                 jumpToNote={jumpToNote}
               />
             ) : (
-              <p className="text-gray-500">Loading PDF...</p>
+              <p className='text-gray-500'>Loading PDF...</p>
             )}
           </div>
         </div>
@@ -280,30 +312,30 @@ export default function Lecture() {
         {rightOpen && (
           <div
             onMouseDown={() => setIsResizingRight(true)}
-            className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
+            className='w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400'
           ></div>
         )}
 
         {/* RIGHT SIDEBAR */}
         {rightOpen && (
           <div
-            className="bg-white border-l shadow-inner flex flex-col"
-            style={{ width: rightWidth, height: "100%" }}
+            className='bg-white border-l shadow-inner flex flex-col'
+            style={{ width: rightWidth, height: '100%' }}
           >
             {/* Scrollable main area: Notes + Transcript */}
-            <div className="p-5 overflow-y-auto flex-1">
+            <div className='p-5 overflow-y-auto flex-1'>
               {/* NOTES SECTION */}
-              <h2 className="text-lg font-bold text-gray-700 mb-4">Notes</h2>
+              <h2 className='text-lg font-bold text-gray-700 mb-4'>Notes</h2>
 
               {allNotes.length === 0 && (
-                <p className="text-gray-500 text-sm">Chưa có ghi chú nào.</p>
+                <p className='text-gray-500 text-sm'>Chưa có ghi chú nào.</p>
               )}
 
-              <div className="space-y-3 mb-6">
+              <div className='space-y-3 mb-6'>
                 {allNotes.map((note) => (
                   <button
                     key={note.id}
-                    className="w-full text-left p-3 bg-gray-50 border rounded-lg shadow-sm hover:bg-gray-100 transition"
+                    className='w-full text-left p-3 bg-gray-50 border rounded-lg shadow-sm hover:bg-gray-100 transition'
                     onClick={() => {
                       setPageNumber(note.page);
                       setTimeout(() => {
@@ -311,26 +343,26 @@ export default function Lecture() {
                       }, 50);
                     }}
                   >
-                    <p className="font-medium">Trang {note.page}</p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {note.content || "(Chưa có nội dung)"}
+                    <p className='font-medium'>Trang {note.page}</p>
+                    <p className='text-xs text-gray-500 truncate'>
+                      {note.content || '(Chưa có nội dung)'}
                     </p>
                   </button>
                 ))}
               </div>
 
               {/* TRANSCRIPT SECTION */}
-              <h3 className="text-lg font-bold text-gray-700 mb-3">
+              <h3 className='text-lg font-bold text-gray-700 mb-3'>
                 Transcript
               </h3>
               {transcripts.length === 0 ? (
-                <p className="text-gray-500 text-sm">Chưa có transcript.</p>
+                <p className='text-gray-500 text-sm'>Chưa có transcript.</p>
               ) : (
-                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">
+                <div className='bg-gray-50 p-4 rounded-lg border border-gray-200'>
+                  <p className='text-xs font-semibold text-gray-600 mb-2'>
                     Transcript {selectedTranscriptIndex + 1}
                   </p>
-                  <p className="text-sm text-gray-700">
+                  <p className='text-sm text-gray-700'>
                     {transcripts[selectedTranscriptIndex]?.full_text}
                   </p>
                 </div>
@@ -338,29 +370,33 @@ export default function Lecture() {
             </div>
 
             {/* AUDIO SECTION - sticky bottom, visually prominent */}
-            <div className="p-4 border-t bg-white sticky bottom-0 shadow-lg">
-              <h3 className="text-lg font-bold text-gray-700 mb-2">Audio</h3>
+            <div className='p-4 border-t bg-white sticky bottom-0 shadow-lg'>
+              <h3 className='text-lg font-bold text-gray-700 mb-2'>Audio</h3>
               {transcripts.length === 0 ? (
-                <p className="text-gray-500 text-sm">Chưa có audio.</p>
+                <p className='text-gray-500 text-sm'>Chưa có audio.</p>
               ) : (
-                <div className="space-y-2">
+                <div className='space-y-2'>
                   {transcripts.map((item, index) => (
                     <button
                       key={item._id || index}
                       onClick={() => {
                         setSelectedTranscriptIndex(index);
+                        localStorage.setItem(
+                          'transcript_id',
+                          item._id || index,
+                        );
                         if (item?.audio_url) setAudioUrl(item.audio_url);
                       }}
                       className={`w-full text-left p-3 rounded-lg border transition ${
                         selectedTranscriptIndex === index
-                          ? "bg-blue-100 border-blue-400 shadow-md"
-                          : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                          ? 'bg-blue-100 border-blue-400 shadow-md'
+                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                       }`}
                     >
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className='text-sm font-semibold text-gray-700'>
                         Audio {index + 1}
                       </p>
-                      <p className="text-xs text-gray-600 truncate">
+                      <p className='text-xs text-gray-600 truncate'>
                         {item.full_text}
                       </p>
                     </button>
@@ -368,7 +404,7 @@ export default function Lecture() {
 
                   {/* Audio Player */}
                   {audioUrl && (
-                    <div className="bg-gray-50 p-3 rounded-lg space-y-2 mt-3">
+                    <div className='bg-gray-50 p-3 rounded-lg space-y-2 mt-3'>
                       <audio
                         ref={audioRef}
                         src={audioUrl}
@@ -384,10 +420,10 @@ export default function Lecture() {
                             setAudioDuration(audioRef.current.duration);
                           }
                         }}
-                        className="w-full"
+                        className='w-full'
                         controls
                       />
-                      <div className="flex items-center justify-between text-xs text-gray-600">
+                      <div className='flex items-center justify-between text-xs text-gray-600'>
                         <div>{Math.floor(audioCurrentTime)}s</div>
                         <div>/</div>
                         <div>{Math.floor(audioDuration)}s</div>
@@ -400,6 +436,46 @@ export default function Lecture() {
           </div>
         )}
       </div>
+
+      {/* Chatbot Drawer */}
+      <ChatbotDrawer
+        isOpen={chatbot.isChatbotOpen}
+        onClose={() => chatbot.setIsChatbotOpen(false)}
+        lectureId={
+          localStorage.getItem('lectureId') || '69182ad0faf294fc3f48c783'
+        }
+        messages={chatbot.messages}
+        loading={chatbot.loading}
+        onSendMessage={chatbot.sendMessage}
+        onAudioTimestampClick={(seconds) => {
+          chatbot.setIsChatbotOpen(false);
+
+          setTimeout(() => {
+            handleAudioTimestampClick(seconds);
+          }, 300);
+        }}
+        onSummary={chatbot.handleGetSummary}
+        onQuiz={chatbot.handleGetQuiz}
+        onClearHistory={chatbot.handleClearHistory}
+        summaryLoading={chatbot.summaryLoading}
+        quizLoading={chatbot.quizLoading}
+      />
+
+      {/* Summary Modal */}
+      <SummaryModal
+        isOpen={chatbot.summaryOpen}
+        onClose={() => chatbot.setSummaryOpen(false)}
+        summary={chatbot.summary}
+        loading={chatbot.summaryLoading}
+      />
+
+      {/* Quiz Modal */}
+      <QuizModal
+        isOpen={chatbot.quizOpen}
+        onClose={() => chatbot.setQuizOpen(false)}
+        quiz={chatbot.quiz}
+        loading={chatbot.quizLoading}
+      />
     </div>
   );
 }
