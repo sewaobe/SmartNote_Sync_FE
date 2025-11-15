@@ -1,11 +1,30 @@
-import React, { useEffect, useState } from "react";
-import pdfjsLib from "../pdf-worker";
-import PdfThumbnail from "../components/PdfThumbnail";
-import InteractivePdfPage from "../components/InteractivePdfPage";
-import api from "../api/axiosClient";
-import { toast } from "sonner";
+import React, { useEffect, useState } from 'react';
+import pdfjsLib from '../pdf-worker';
+import PdfThumbnail from '../components/PdfThumbnail';
+import PdfContinuousViewer from '../components/PdfContinuousViewer';
+import InteractivePdfPage from '../components/InteractivePdfPage';
+import api from '../api/axiosClient';
+import { toast } from 'sonner';
+import ChatbotDrawer from '../components/ChatbotDrawer';
+import SummaryModal from '../components/SummaryModal';
+import QuizModal from '../components/QuizModal';
+import { ChatbotProvider, useChatbotContext } from '../components/ChatbotProvider';
+import { useChatbotIntegration } from '../hooks/useChatbotIntegration';
 
 export default function Lecture() {
+    return (
+        <ChatbotProvider
+            lectureId={localStorage.getItem('lectureId') || '69182ad0faf294fc3f48c783'}
+            transcript_id={localStorage.getItem('transcript_id')}>
+            <LectureContent />
+        </ChatbotProvider>
+    );
+}
+
+function LectureContent() {
+    const chatbot = useChatbotContext();
+    const audioRef = React.useRef(null);
+    const { handleAudioTimestampClick } = useChatbotIntegration(audioRef);
     const [pdf, setPdf] = useState(null);
     const [pageCount, setPageCount] = useState(0);
     const [pageNumber, setPageNumber] = useState(1);
@@ -19,7 +38,6 @@ export default function Lecture() {
     const [transcripts, setTranscripts] = useState([]); // array of transcripts
     const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState(0); // track which transcript is selected
     const [pdfPresignedUrl, setPdfPresignedUrl] = useState(null); // store presigned PDF URL
-    const audioRef = React.useRef(null);
 
     // Recording states
     const [isRecording, setIsRecording] = useState(false);
@@ -55,10 +73,7 @@ export default function Lecture() {
                 setLeftWidth(newWidth);
             }
             if (isResizingRight) {
-                const newWidth = Math.min(
-                    Math.max(window.innerWidth - e.clientX, 200),
-                    500
-                );
+                const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, 200), 500);
                 setRightWidth(newWidth);
             }
         };
@@ -68,12 +83,12 @@ export default function Lecture() {
             setIsResizingRight(false);
         };
 
-        window.addEventListener("mousemove", handleMove);
-        window.addEventListener("mouseup", stopResize);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', stopResize);
 
         return () => {
-            window.removeEventListener("mousemove", handleMove);
-            window.removeEventListener("mouseup", stopResize);
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', stopResize);
         };
     }, [isResizingLeft, isResizingRight]);
 
@@ -82,10 +97,10 @@ export default function Lecture() {
     // -----------------------------
     useEffect(() => {
         const loadPdfData = async () => {
-            const pdfUrl = localStorage.getItem("lecturePdfUrl");
+            const pdfUrl = localStorage.getItem('lecturePdfUrl');
 
             if (!pdfUrl) {
-                toast.error("Không tìm thấy PDF URL");
+                toast.error('Không tìm thấy PDF URL');
                 return;
             }
 
@@ -94,9 +109,9 @@ export default function Lecture() {
                 const res = await api.get(`/files/presigned/${pdfUrl}`);
                 const presignedUrl = res.url;
 
-                if (!presignedUrl) throw new Error("Missing presigned URL");
+                if (!presignedUrl) throw new Error('Missing presigned URL');
 
-                console.log("Presigned:", presignedUrl);
+                console.log('Presigned:', presignedUrl);
 
                 // 2. Fetch PDF as blob từ presigned URL
                 const loadingTask = pdfjsLib.getDocument({
@@ -107,10 +122,10 @@ export default function Lecture() {
                 setPdf(pdfDoc);
                 setPageCount(pdfDoc.numPages);
 
-                console.log("PDF loaded successfully, pages:", pdfDoc.numPages);
+                console.log('PDF loaded successfully, pages:', pdfDoc.numPages);
             } catch (err) {
-                console.error("Load PDF error:", err);
-                toast.error("Không thể load PDF: " + err.message);
+                console.error('Load PDF error:', err);
+                toast.error('Không thể load PDF: ' + err.message);
             }
         };
 
@@ -149,23 +164,20 @@ export default function Lecture() {
 
             const noteCreatedAt = note.created_at || note.createdAt || note.created;
             if (!noteCreatedAt) {
-                toast.error("Không có thời gian tạo cho ghi chú");
+                toast.error('Không có thời gian tạo cho ghi chú');
                 return;
             }
 
-            console.log("transcripts", transcripts);
-            console.log("note.transcript_id", note.transcript_id);
+            console.log('transcripts', transcripts);
+            console.log('note.transcript_id', note.transcript_id);
             // choose transcript: prefer note.transcript_id if present, otherwise currently selected transcript
             let transcript = null;
             if (note.transcript_id) {
-                transcript = transcripts.find(
-                    (t) =>
-                        t._id === note.transcript_id
-                );
+                transcript = transcripts.find((t) => t._id === note.transcript_id);
             }
 
             if (!transcript || !transcript.audio_url) {
-                toast.error("Không tìm thấy audio tương ứng để phát");
+                toast.error('Không tìm thấy audio tương ứng để phát');
                 return;
             }
 
@@ -195,23 +207,23 @@ export default function Lecture() {
 
                 const setAndPlay = () => {
                     try {
-                        if (!isNaN(offsetSeconds) && typeof offsetSeconds === "number") {
+                        if (!isNaN(offsetSeconds) && typeof offsetSeconds === 'number') {
                             // clamp to duration if available
                             const dur = audio.duration || 0;
                             const seekTo = dur > 0 ? Math.min(offsetSeconds, dur) : offsetSeconds;
                             audio.currentTime = seekTo;
                         }
                     } catch (e) {
-                        console.warn("Cannot set currentTime yet", e);
+                        console.warn('Cannot set currentTime yet', e);
                     }
 
-                    audio.play().catch((err) => console.error("Audio play failed:", err));
+                    audio.play().catch((err) => console.error('Audio play failed:', err));
                 };
 
                 if (audio.readyState >= 1) {
                     setAndPlay();
                 } else {
-                    audio.addEventListener("loadedmetadata", setAndPlay, { once: true });
+                    audio.addEventListener('loadedmetadata', setAndPlay, { once: true });
                 }
             };
 
@@ -219,8 +231,8 @@ export default function Lecture() {
             setTimeout(() => tryPlay(), 80);
             toast.success(`Phát audio từ ${Math.floor(offsetSeconds)} giây`);
         } catch (err) {
-            console.error("handlePlayAudioForNote error:", err);
-            toast.error("Không thể phát audio");
+            console.error('handlePlayAudioForNote error:', err);
+            toast.error('Không thể phát audio');
         }
     };
 
@@ -240,16 +252,16 @@ export default function Lecture() {
                     const transcriptId = res?.data?.transcript_id || res?.transcript_id || res?._id || res?.id;
 
                     if (transcriptId) {
-                        localStorage.setItem("transcriptId", transcriptId);
-                        console.log("Transcription started, ID:", transcriptId);
+                        localStorage.setItem('transcriptId', transcriptId);
+                        console.log('Transcription started, ID:', transcriptId);
                     } else {
-                        console.warn("No transcript_id found in response:", res);
-                        toast.error("Không tìm thấy transcript_id từ API");
+                        console.warn('No transcript_id found in response:', res);
+                        toast.error('Không tìm thấy transcript_id từ API');
                         return;
                     }
                 } catch (apiErr) {
-                    console.error("Failed to start transcription:", apiErr);
-                    toast.error("Không thể bắt đầu transcription");
+                    console.error('Failed to start transcription:', apiErr);
+                    toast.error('Không thể bắt đầu transcription');
                     return;
                 }
 
@@ -264,39 +276,35 @@ export default function Lecture() {
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunksRef.current, { type: "audio/webm" });
+                    const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
                     setRecordedBlob(blob);
                     stream.getTracks().forEach((track) => track.stop());
-                    toast.success("Ghi âm hoàn tất");
+                    toast.success('Ghi âm hoàn tất');
 
                     // Upload recorded audio to transcription endpoint
                     const uploadRecording = async () => {
                         try {
-                            const transcriptId = localStorage.getItem("transcriptId");
+                            const transcriptId = localStorage.getItem('transcriptId');
                             if (!transcriptId) {
-                                console.warn("No transcriptId found in localStorage");
-                                toast.error("Không tìm thấy transcriptId");
+                                console.warn('No transcriptId found in localStorage');
+                                toast.error('Không tìm thấy transcriptId');
                                 return;
                             }
 
                             const formData = new FormData();
-                            formData.append("audio", blob, "recording.webm");
+                            formData.append('audio', blob, 'recording.webm');
 
-                            const res = await api.post(
-                                `/transcription/upload/${transcriptId}`,
-                                formData,
-                                {
-                                    headers: {
-                                        "Content-Type": "multipart/form-data",
-                                    },
-                                }
-                            );
+                            const res = await api.post(`/transcription/upload/${transcriptId}`, formData, {
+                                headers: {
+                                    'Content-Type': 'multipart/form-data',
+                                },
+                            });
 
-                            console.log("Recording uploaded successfully:", res);
-                            toast.success("Ghi âm đã được tải lên");
+                            console.log('Recording uploaded successfully:', res);
+                            toast.success('Ghi âm đã được tải lên');
                         } catch (err) {
-                            console.error("Failed to upload recording:", err);
-                            toast.error("Không thể tải lên ghi âm: " + (err?.message || "Unknown error"));
+                            console.error('Failed to upload recording:', err);
+                            toast.error('Không thể tải lên ghi âm: ' + (err?.message || 'Unknown error'));
                         }
                     };
 
@@ -306,40 +314,35 @@ export default function Lecture() {
                 mediaRecorder.start();
                 mediaRecorderRef.current = mediaRecorder;
                 setIsRecording(true);
-                toast.success("Bắt đầu ghi âm");
+                toast.success('Bắt đầu ghi âm');
             } catch (err) {
-                console.error("Microphone access denied:", err);
-                toast.error("Không thể truy cập microphone");
+                console.error('Microphone access denied:', err);
+                toast.error('Không thể truy cập microphone');
             }
         }
-    }; const [allNotes, setAllNotes] = useState([]);
+    };
+    const [allNotes, setAllNotes] = useState([]);
     const [jumpToNote, setJumpToNote] = useState(null);
-
-
 
     // Load user role from localStorage
     useEffect(() => {
-        const role = localStorage.getItem("userRole");
+        const role = localStorage.getItem('userRole');
         setUserRole(role);
     }, []);
 
     // Get lectureId from localStorage
     const getLectureId = () => {
-        const stored = localStorage.getItem("lectureId");
-        return stored && stored !== "undefined" && stored !== "null"
-            ? stored
-            : "69182ad0faf294fc3f48c783";
+        const stored = localStorage.getItem('lectureId');
+        return stored && stored !== 'undefined' && stored !== 'null' ? stored : '69182ad0faf294fc3f48c783';
     };
 
     // Fetch transcription / audio for current lecture
     useEffect(() => {
         const fetchTranscription = async () => {
             // read lectureId from localStorage but guard against string 'undefined'/'null'
-            const stored = localStorage.getItem("lectureId");
+            const stored = localStorage.getItem('lectureId');
             const lectureId =
-                stored && stored !== "undefined" && stored !== "null"
-                    ? stored
-                    : "69182ad0faf294fc3f48c783";
+                stored && stored !== 'undefined' && stored !== 'null' ? stored : '69182ad0faf294fc3f48c783';
 
             try {
                 const res = await api.get(`/transcription/lecture/${lectureId}`);
@@ -356,15 +359,13 @@ export default function Lecture() {
                 setTranscripts(items);
                 setSelectedTranscriptIndex(0); // default to first
 
+                localStorage.setItem('transcript_id', items[0]._id);
                 // pick the first item for audio_url
                 const first = items[0];
                 if (first?.audio_url) setAudioUrl(first.audio_url);
             } catch (err) {
-                console.error("Failed to fetch transcription", err);
-                const message =
-                    err?.response?.data?.message ||
-                    err.message ||
-                    "Lỗi khi lấy transcription";
+                console.error('Failed to fetch transcription', err);
+                const message = err?.response?.data?.message || err.message || 'Lỗi khi lấy transcription';
                 toast.error(`Không thể lấy audio/transcript: ${message}`);
             }
         };
@@ -381,7 +382,7 @@ export default function Lecture() {
                 const payload = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
                 setInitialNotesFromServer(payload);
             } catch (err) {
-                console.error("Failed to load notes for lecture:", err);
+                console.error('Failed to load notes for lecture:', err);
             }
         };
 
@@ -393,13 +394,13 @@ export default function Lecture() {
         try {
             const lectureId = getLectureId();
             // prefer a transcript that is currently queued (in-progress) for this lecture
-            const queued = transcripts.find((t) => t?.status === "queued");
+            const queued = transcripts.find((t) => t?.status === 'queued');
             const transcriptId = queued?._id || undefined;
 
             const body = {
                 lecture_id: lectureId,
                 position: { x: posPx.x, y: posPx.y },
-                content: note.content || "",
+                content: note.content || '',
                 created_at: new Date().toISOString(),
                 transcript_id: transcriptId || undefined,
                 page_index: note.page,
@@ -413,13 +414,13 @@ export default function Lecture() {
             if (serverId) {
                 // inform child to replace local id with server id
                 setAssignMap((m) => ({ ...m, [note.id]: serverId }));
-                console.log("Note created on server, mapping", note.id, "->", serverId);
+                console.log('Note created on server, mapping', note.id, '->', serverId);
             } else {
-                console.warn("Cannot determine server id for created note", created);
+                console.warn('Cannot determine server id for created note', created);
             }
         } catch (err) {
-            console.error("Failed to create note on server:", err);
-            toast.error("Không thể lưu ghi chú");
+            console.error('Failed to create note on server:', err);
+            toast.error('Không thể lưu ghi chú');
         }
     };
 
@@ -432,8 +433,8 @@ export default function Lecture() {
             const body = { content: note.content };
             await api.put(`/notes/${serverId}`, body);
         } catch (err) {
-            console.error("Failed to update note on server:", err);
-            toast.error("Không thể cập nhật ghi chú");
+            console.error('Failed to update note on server:', err);
+            toast.error('Không thể cập nhật ghi chú');
         }
     };
 
@@ -444,8 +445,8 @@ export default function Lecture() {
             if (/^\d+$/.test(String(serverId))) return;
             await api.delete(`/notes/${serverId}`);
         } catch (err) {
-            console.error("Failed to delete note on server:", err);
-            toast.error("Không thể xóa ghi chú");
+            console.error('Failed to delete note on server:', err);
+            toast.error('Không thể xóa ghi chú');
         }
     };
 
@@ -456,39 +457,39 @@ export default function Lecture() {
                 <h1 className="text-xl font-semibold text-gray-700">Lecture View</h1>
 
                 <div className="flex items-center gap-3">
+                    {/* Chatbot Button */}
+                    <button
+                        onClick={() => chatbot.setIsChatbotOpen(!chatbot.isChatbotOpen)}
+                        className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition">
+                        💬 Chat
+                    </button>
                     {/* Recording Button - only show for teachers */}
-                    {userRole === "teacher" && (
+                    {userRole === 'teacher' && (
                         <button
                             onClick={toggleRecording}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${isRecording
-                                ? "bg-red-500 hover:bg-red-600 text-white"
-                                : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                                }`}
-                        >
-                            {isRecording ? "⏹ Dừng ghi" : "🎤 Ghi âm"}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition ${
+                                isRecording
+                                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                            }`}>
+                            {isRecording ? '⏹ Dừng ghi' : '🎤 Ghi âm'}
                         </button>
-                    )}                    {/* Toggle Left */}
-                    <button
-                        onClick={toggleLeft}
-                        className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
-                    >
-                        {leftOpen ? "Hide Slides" : "Show Slides"}
+                    )}{' '}
+                    {/* Toggle Left */}
+                    <button onClick={toggleLeft} className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm">
+                        {leftOpen ? 'Hide Slides' : 'Show Slides'}
                     </button>
-
                     {/* Toggle Right */}
-                    {userRole === "student" && (
+                    {userRole === 'student' && (
                         <button
                             onClick={toggleRight}
-                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm"
-                        >
-                            {rightOpen ? "Hide Notes" : "Show Notes"}
+                            className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-md text-sm">
+                            {rightOpen ? 'Hide Notes' : 'Show Notes'}
                         </button>
                     )}
-
                     <button
-                        onClick={() => (window.location.href = "/")}
-                        className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
-                    >
+                        onClick={() => (window.location.href = '/')}
+                        className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm">
                         Back Home
                     </button>
                 </div>
@@ -500,11 +501,8 @@ export default function Lecture() {
                 {leftOpen && (
                     <div
                         className="bg-white border-r shadow-sm overflow-y-auto p-3 space-y-4"
-                        style={{ width: leftWidth }}
-                    >
-                        <h3 className="text-sm font-semibold text-gray-700">
-                            Slides ({pageCount})
-                        </h3>
+                        style={{ width: leftWidth }}>
+                        <h3 className="text-sm font-semibold text-gray-700">Slides ({pageCount})</h3>
 
                         {pdf &&
                             Array.from({ length: pageCount }, (_, i) => (
@@ -524,8 +522,7 @@ export default function Lecture() {
                 {leftOpen && (
                     <div
                         onMouseDown={() => setIsResizingLeft(true)}
-                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
-                    ></div>
+                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"></div>
                 )}
 
                 {/* MAIN VIEWER AREA */}
@@ -556,20 +553,18 @@ export default function Lecture() {
                 {rightOpen && (
                     <div
                         onMouseDown={() => setIsResizingRight(true)}
-                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"
-                    ></div>
+                        className="w-1 cursor-col-resize bg-gray-300 hover:bg-gray-400"></div>
                 )}
 
                 {/* RIGHT SIDEBAR */}
                 {rightOpen && (
                     <div
                         className="bg-white border-l shadow-inner flex flex-col"
-                        style={{ width: rightWidth, height: "100%" }}
-                    >
+                        style={{ width: rightWidth, height: '100%' }}>
                         {/* Scrollable main area: Notes + Transcript */}
                         <div className="p-5 overflow-y-auto flex-1">
                             {/* NOTES SECTION - only show for students */}
-                            {userRole === "student" && (
+                            {userRole === 'student' && (
                                 <>
                                     <h2 className="text-lg font-bold text-gray-700 mb-4">Notes</h2>
 
@@ -587,11 +582,10 @@ export default function Lecture() {
                                                     setTimeout(() => {
                                                         setJumpToNote(note);
                                                     }, 50);
-                                                }}
-                                            >
+                                                }}>
                                                 <p className="font-medium">Trang {note.page}</p>
                                                 <p className="text-xs text-gray-500 truncate">
-                                                    {note.content || "(Chưa có nội dung)"}
+                                                    {note.content || '(Chưa có nội dung)'}
                                                 </p>
                                             </button>
                                         ))}
@@ -600,9 +594,7 @@ export default function Lecture() {
                             )}
 
                             {/* TRANSCRIPT SECTION */}
-                            <h3 className="text-lg font-bold text-gray-700 mb-3">
-                                Transcript
-                            </h3>
+                            <h3 className="text-lg font-bold text-gray-700 mb-3">Transcript</h3>
                             {transcripts.length === 0 ? (
                                 <p className="text-gray-500 text-sm">Chưa có transcript.</p>
                             ) : (
@@ -629,19 +621,16 @@ export default function Lecture() {
                                             key={item._id || index}
                                             onClick={() => {
                                                 setSelectedTranscriptIndex(index);
+                                                localStorage.setItem('transcript_id', item._id || index);
                                                 if (item?.audio_url) setAudioUrl(item.audio_url);
                                             }}
-                                            className={`w-full text-left p-3 rounded-lg border transition ${selectedTranscriptIndex === index
-                                                ? "bg-blue-100 border-blue-400 shadow-md"
-                                                : "bg-gray-50 border-gray-200 hover:bg-gray-100"
-                                                }`}
-                                        >
-                                            <p className="text-sm font-semibold text-gray-700">
-                                                Audio {index + 1}
-                                            </p>
-                                            <p className="text-xs text-gray-600 truncate">
-                                                {item.full_text}
-                                            </p>
+                                            className={`w-full text-left p-3 rounded-lg border transition ${
+                                                selectedTranscriptIndex === index
+                                                    ? 'bg-blue-100 border-blue-400 shadow-md'
+                                                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                            }`}>
+                                            <p className="text-sm font-semibold text-gray-700">Audio {index + 1}</p>
+                                            <p className="text-xs text-gray-600 truncate">{item.full_text}</p>
                                         </button>
                                     ))}
 
@@ -679,6 +668,44 @@ export default function Lecture() {
                     </div>
                 )}
             </div>
+
+            {/* Chatbot Drawer */}
+            <ChatbotDrawer
+                isOpen={chatbot.isChatbotOpen}
+                onClose={() => chatbot.setIsChatbotOpen(false)}
+                lectureId={localStorage.getItem('lectureId') || '69182ad0faf294fc3f48c783'}
+                messages={chatbot.messages}
+                loading={chatbot.loading}
+                onSendMessage={chatbot.sendMessage}
+                onAudioTimestampClick={(seconds) => {
+                    chatbot.setIsChatbotOpen(false);
+
+                    setTimeout(() => {
+                        handleAudioTimestampClick(seconds);
+                    }, 300);
+                }}
+                onSummary={chatbot.handleGetSummary}
+                onQuiz={chatbot.handleGetQuiz}
+                onClearHistory={chatbot.handleClearHistory}
+                summaryLoading={chatbot.summaryLoading}
+                quizLoading={chatbot.quizLoading}
+            />
+
+            {/* Summary Modal */}
+            <SummaryModal
+                isOpen={chatbot.summaryOpen}
+                onClose={() => chatbot.setSummaryOpen(false)}
+                summary={chatbot.summary}
+                loading={chatbot.summaryLoading}
+            />
+
+            {/* Quiz Modal */}
+            <QuizModal
+                isOpen={chatbot.quizOpen}
+                onClose={() => chatbot.setQuizOpen(false)}
+                quiz={chatbot.quiz}
+                loading={chatbot.quizLoading}
+            />
         </div>
     );
 }
