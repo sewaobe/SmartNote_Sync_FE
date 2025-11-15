@@ -4,6 +4,7 @@ import PdfThumbnail from '../components/PdfThumbnail';
 import PdfContinuousViewer from '../components/PdfContinuousViewer';
 import InteractivePdfPage from '../components/InteractivePdfPage';
 import api from '../api/axiosClient';
+import { updateCurrentPageIndex, getCurrentPageIndex } from '../api/transcriptionAPI';
 import { toast } from 'sonner';
 import ChatbotDrawer from '../components/ChatbotDrawer';
 import SummaryModal from '../components/SummaryModal';
@@ -329,6 +330,64 @@ function LectureContent() {
         const role = localStorage.getItem('userRole');
         setUserRole(role);
     }, []);
+
+    // Teacher: Update current page index when page changes
+    useEffect(() => {
+        if (userRole !== 'teacher' || !pageNumber) return;
+
+        const updatePageIndex = async () => {
+            try {
+                const lectureId = getLectureId();
+                // Page number is 1-based, convert to 0-based index
+                await updateCurrentPageIndex(lectureId, pageNumber - 1);
+                console.log('Updated page index to:', pageNumber - 1);
+            } catch (error) {
+                console.error('Failed to update page index:', error);
+                // Don't show error toast to avoid spamming the teacher
+            }
+        };
+
+        updatePageIndex();
+    }, [pageNumber, userRole]);
+
+    // Student: Poll for page index updates every 5 seconds
+    useEffect(() => {
+        if (userRole !== 'student') return;
+
+        const pollPageIndex = async () => {
+            try {
+                const lectureId = getLectureId();
+                const result = await getCurrentPageIndex(lectureId);
+                const serverPageIndex = result?.currentPageIndex;
+
+                // If serverPageIndex is -1, do nothing (no active transcription)
+                if (serverPageIndex === -1 || serverPageIndex === undefined || serverPageIndex === null) {
+                    return;
+                }
+
+                // Convert 0-based index to 1-based page number
+                const serverPageNumber = serverPageIndex + 1;
+
+                // Only update if different from current page
+                if (serverPageNumber !== pageNumber && serverPageNumber > 0 && serverPageNumber <= pageCount) {
+                    console.log('Syncing to teacher page:', serverPageNumber);
+                    setPageNumber(serverPageNumber);
+                    toast.info(`Đã chuyển đến trang ${serverPageNumber} (theo giáo viên)`);
+                }
+            } catch (error) {
+                console.error('Failed to get page index:', error);
+                // Don't show error toast to avoid spamming
+            }
+        };
+
+            // Poll immediately on mount
+            pollPageIndex();
+
+            // Then poll every 5 seconds
+            const intervalId = setInterval(pollPageIndex, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [userRole, pageNumber, pageCount]);
 
     // Get lectureId from localStorage
     const getLectureId = () => {
